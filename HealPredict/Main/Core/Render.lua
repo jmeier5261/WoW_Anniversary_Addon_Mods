@@ -2600,7 +2600,11 @@ HookIfExists("UnitFrameHealthBar_OnUpdate", function(self)
     if not self.disconnected and not self.lockValues then
         if not self.ignoreNoUnit or UnitGUID(self.unit) then
             local frame = self:GetParent()
-            if frameData[frame] then
+            local fd = frameData[frame]
+            -- SUF/ElvUI frames reuse Blizzard's UnitFrameHealthBar template;
+            -- routing them through QueueUnit would paint them with UNIT_PAL
+            -- before their own renderer re-paints with the correct palette.
+            if fd and not fd._isSUF and not fd._isElvUI then
                 TrackGUID(frame, frame.unit, guidToUnit)
                 QueueUnit(frame)
             end
@@ -2611,7 +2615,8 @@ end)
 HookIfExists("UnitFrameHealthBar_Update", function(sb)
     if sb and not sb.lockValues then
         local frame = sb:GetParent()
-        if frameData[frame] then
+        local fd = frameData[frame]
+        if fd and not fd._isSUF and not fd._isElvUI then
             TrackGUID(frame, frame.unit, guidToUnit)
             QueueUnit(frame)
         end
@@ -2829,14 +2834,17 @@ local function NotifyGUIDs(...)
             CheckContainer(_G.CompactPartyFrame)
             CheckContainer(_G.CompactRaidFrameContainer)
             
-            -- Also scan our existing frames
+            -- Also scan our existing frames. SUF/ElvUI frames have their
+            -- own renderer (UpdateSUFFrame / UpdateElvUIFrame) driven by
+            -- their compat ticker — never route them through QueueUnit, or
+            -- the unit palette will paint over their raid palette.
             for frame, fd in pairs(frameData) do
                 if fd.usesGradient and frame.displayedUnit then
                     if UnitGUID(frame.displayedUnit) == guid then
                         TrackGUID(frame, frame.displayedUnit, guidToCompact)
                         QueueCompact(frame)
                     end
-                elseif not fd.usesGradient and frame.unit then
+                elseif not fd.usesGradient and not fd._isSUF and not fd._isElvUI and frame.unit then
                     if UnitGUID(frame.unit) == guid then
                         TrackGUID(frame, frame.unit, guidToUnit)
                         QueueUnit(frame)
