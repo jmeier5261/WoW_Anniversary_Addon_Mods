@@ -1,0 +1,11 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="ChatThrottleLib.lua"/>
+    <Script file="HealEngine.lua"/>
+    <Script file="Utilities.lua"/>
+    <Script file="Modifiers.lua"/>
+    <Script file="Communication.lua"/>
+    <Script file="CastTracking.lua"/>
+    <Script file="SpellData.lua"/>
+    <Script file="Init.lua"/>
+</Ui>

@@ -1,0 +1,21 @@
+## Interface: 20505
+## Title: HealPredict
+## Notes: Heal prediction bars with full ElvUI support including textures, orientation, and custom styles.
+## Version: 1.1.1
+## Author: DarkpoisOn
+## IconTexture: Interface\AddOns\HealPredict\icon
+## X-License: All Rights Reserved (c) 2026 DarkpoisOn
+## SavedVariables: HealPredictDB
+## SavedVariablesPerCharacter: HealPredictSettings
+## OptionalDeps: ElvUI, Tukui, ShadowedUnitFrames, VuhDo
+
+libs\LibStub\LibStub.lua
+libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+libs\HealEngine\HealEngine.xml
+
+Locales\Locales.lua
+Locales\enUS.lua
+
+Main\Main.xml
+
+HealPredict.xml

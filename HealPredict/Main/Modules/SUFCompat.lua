@@ -1,7 +1,6 @@
 -- HealPredict - Shadowed Unit Frames (SUF) Compatibility Module
 -- Full support for SUF customizations including textures, orientation, and styles
--- Author: DarkpoisOn
--- License: All Rights Reserved (c) 2026 DarkpoisOn
+-- Author: PineappleTuesday
 
 local HP = HealPredict
 local Settings = HP.Settings
@@ -295,8 +294,8 @@ function HP.SetupSUFFrame(frameInfo)
         end
     end
 
-    -- Four prediction bar textures on the overlay
-    for idx = 1, 4 do
+    -- Five prediction bar textures on the overlay (5th = foreign HoT slot)
+    for idx = 1, 5 do
         local tex = overlay:CreateTexture(nil, "BORDER", nil, 5)
         ApplyBarTexture(tex)
         tex:ClearAllPoints()
@@ -630,7 +629,7 @@ end
 ------------------------------------------------------------------------
 local function HideAllSUFExtras(fd)
     if fd.bars then
-        for idx = 1, 4 do if fd.bars[idx] then fd.bars[idx]:Hide() end end
+        for idx = 1, 5 do if fd.bars[idx] then fd.bars[idx]:Hide() end end
     end
     if fd.shieldTex       then fd.shieldTex:Hide() end
     if fd.absorbBar       then fd.absorbBar:Hide() end
@@ -711,36 +710,22 @@ function HP.UpdateSUFFrame(sufFrame)
     end
 
     -- Get heal amounts from HealPredict's engine (HealComm protocol)
-    local my1, my2, ot1, ot2
+    -- ot3 is the foreign-HoT slot (only populated in sorted mode).
+    local my1, my2, ot1, ot2, ot3
     if Settings.smartOrdering and HP.GetHealsSorted then
-        my1, my2, ot1, ot2 = HP.GetHealsSorted(unit)
+        my1, my2, ot1, ot2, ot3 = HP.GetHealsSorted(unit)
     elseif HP.GetHeals then
-        my1, my2, ot1, ot2 = HP.GetHeals(unit)
+        my1, my2, ot1, ot2, ot3 = HP.GetHeals(unit)
     else
         return
     end
+    ot3 = ot3 or 0
 
     local isSorted = Settings.smartOrdering
 
-    -- Supplement with the native WoW API for heals from OTHER players
-    -- who aren't running HealPredict.  Only compare the OTHER-heal
-    -- portion — self heals can differ between API and Engine due to
-    -- spell power / modifier calculation differences, and supplementing
-    -- that difference would create a phantom extra bar.
-    if UnitGetIncomingHeals then
-        local apiTotal = UnitGetIncomingHeals(unit) or 0
-        local apiSelf  = UnitGetIncomingHeals(unit, "player") or 0
-        local apiOther = apiTotal - apiSelf
-        local engineOther = ot1 + ot2
-        if isSorted then
-            -- In sorted mode my1 is otherBefore (not "my" heals).
-            -- Include it so engine-tracked heals aren't double-counted.
-            engineOther = engineOther + my1
-        end
-        if apiOther > engineOther then
-            ot1 = ot1 + (apiOther - engineOther)
-        end
-    end
+    -- Note: API supplement for non-HealPredict direct heals is applied
+    -- inside HP.GetHeals / HP.GetHealsSorted (Render.lua), so all
+    -- renderers benefit uniformly. No per-frame supplement needed here.
 
     -- Pick the correct color palette per frame type.
     -- SUF party/raid use the "raid" (compact) palette; single-unit frames
@@ -749,22 +734,22 @@ function HP.UpdateSUFFrame(sufFrame)
     local pal, palOH
     if isCompact then
         if isSorted then
-            -- Sorted slots are by timing (before/after), not heal type.
-            -- Slot 3 is other-direct heals landing after ours, not HoTs,
-            -- so use raidOtherDirect for both other-heal slots.
-            pal   = { "raidOtherDirect", "raidMyDirect", "raidOtherDirect", "raidMyHoT" }
-            palOH = { "raidOtherDirectOH", "raidMyDirectOH", "raidOtherDirectOH", "raidMyHoTOH" }
+            -- Sorted slots: 1=otherBefore, 2=selfDirect, 3=otherAfter,
+            -- 4=myHoT, 5=otherHoT (dedicated foreign-HoT slot so other
+            -- players' HoTs don't borrow the my-color palette).
+            pal   = { "raidOtherDirect", "raidMyDirect", "raidOtherDirect", "raidMyHoT", "raidOtherHoT" }
+            palOH = { "raidOtherDirectOH", "raidMyDirectOH", "raidOtherDirectOH", "raidMyHoTOH", "raidOtherHoTOH" }
         else
-            pal   = { "raidMyDirect", "raidMyHoT", "raidOtherDirect", "raidOtherHoT" }
-            palOH = { "raidMyDirectOH", "raidMyHoTOH", "raidOtherDirectOH", "raidOtherHoTOH" }
+            pal   = { "raidMyDirect", "raidMyHoT", "raidOtherDirect", "raidOtherHoT", "raidOtherHoT" }
+            palOH = { "raidMyDirectOH", "raidMyHoTOH", "raidOtherDirectOH", "raidOtherHoTOH", "raidOtherHoTOH" }
         end
     else
         if isSorted then
-            pal   = { "unitOtherDirect", "unitMyDirect", "unitOtherDirect", "unitMyHoT" }
-            palOH = { "unitOtherDirectOH", "unitMyDirectOH", "unitOtherDirectOH", "unitMyHoTOH" }
+            pal   = { "unitOtherDirect", "unitMyDirect", "unitOtherDirect", "unitMyHoT", "unitOtherHoT" }
+            palOH = { "unitOtherDirectOH", "unitMyDirectOH", "unitOtherDirectOH", "unitMyHoTOH", "unitOtherHoTOH" }
         else
-            pal   = { "unitMyDirect", "unitMyHoT", "unitOtherDirect", "unitOtherHoT" }
-            palOH = { "unitMyDirectOH", "unitMyHoTOH", "unitOtherDirectOH", "unitOtherHoTOH" }
+            pal   = { "unitMyDirect", "unitMyHoT", "unitOtherDirect", "unitOtherHoT", "unitOtherHoT" }
+            palOH = { "unitMyDirectOH", "unitMyHoTOH", "unitOtherDirectOH", "unitOtherHoTOH", "unitOtherHoTOH" }
         end
     end
 
@@ -773,7 +758,7 @@ function HP.UpdateSUFFrame(sufFrame)
     local dimFactor = (isSorted and Settings.dimNonImminent) and 0.6
                    or ((not isSorted and Settings.dimNonImminent and Settings.useTimeLimit) and 0.6 or 1.0)
 
-    local amounts = { my1, my2, ot1, ot2 }
+    local amounts = { my1, my2, ot1, ot2, ot3 }
 
     -- Class-colored bars: each bar gets the caster's class color.
     -- Only available in sorted mode, matching the core renderer.
@@ -783,16 +768,16 @@ function HP.UpdateSUFFrame(sufFrame)
         if guid then
             local casterHeals = Engine:GetHealAmountByCaster(guid, Engine.ALL_HEALS)
             local casterCount = casterHeals and #casterHeals or 0
-            local origTotal = my1 + my2 + ot1 + ot2
+            local origTotal = my1 + my2 + ot1 + ot2 + ot3
 
-            for idx = casterCount + 1, 4 do
+            for idx = casterCount + 1, 5 do
                 if fd.bars[idx] then fd.bars[idx]:Hide() end
                 amounts[idx] = 0
             end
 
             local assignedTotal = 0
             for idx, healInfo in ipairs(casterHeals) do
-                if idx > 4 then break end
+                if idx > 5 then break end
                 local bar = fd.bars[idx]
                 if bar then
                     local r, g, b = GetClassColor(healInfo.caster)
@@ -808,7 +793,7 @@ function HP.UpdateSUFFrame(sufFrame)
             -- Fill remaining bars with API-only healers (not tracked by
             -- HealComm).  Scan group members to find who else is healing
             -- this target so we can show their class color.
-            if casterCount < 4 and UnitGetIncomingHeals and assignedTotal < origTotal then
+            if casterCount < 5 and UnitGetIncomingHeals and assignedTotal < origTotal then
                 local nextIdx = casterCount + 1
                 local engineGUIDs = {}
                 for _, hi in ipairs(casterHeals) do
@@ -818,7 +803,7 @@ function HP.UpdateSUFFrame(sufFrame)
                 local memberCount = GetNumGroupMembers() or 0
                 local prefix = IsInRaid() and "raid" or "party"
                 for i = 1, memberCount do
-                    if nextIdx > 4 then break end
+                    if nextIdx > 5 then break end
                     local mUnit = prefix .. i
                     local mGUID = UnitGUID(mUnit)
                     if mGUID and not engineGUIDs[mGUID] then
@@ -838,14 +823,14 @@ function HP.UpdateSUFFrame(sufFrame)
                 end
             end
 
-            my1, my2, ot1, ot2 = amounts[1], amounts[2], amounts[3], amounts[4]
+            my1, my2, ot1, ot2, ot3 = amounts[1], amounts[2], amounts[3], amounts[4], amounts[5]
         end
     end
 
     -- Standard palette coloring (when not using class colors)
     if not useClassColors then
         local activePal = pal
-        local overhealing = cap <= 0 and 0 or mathmax((hp + my1 + my2 + ot1 + ot2) / cap - 1, 0)
+        local overhealing = cap <= 0 and 0 or mathmax((hp + my1 + my2 + ot1 + ot2 + ot3) / cap - 1, 0)
         if Settings.useOverhealColors and overhealing >= (Settings.overhealThreshold or 0) then
             activePal = palOH
         end
@@ -856,15 +841,15 @@ function HP.UpdateSUFFrame(sufFrame)
         -- overflow portion nearly invisible against the frame background).
         local isOverhealing = overhealing > 0
 
-        for idx = 1, 4 do
+        for idx = 1, 5 do
             local cData = colors and colors[activePal[idx]]
             if cData and fd.bars[idx] then
                 local aDim = 1.0
                 if not isOverhealing then
                     if isSorted then
-                        aDim = (idx == 3 or idx == 4) and dimFactor or 1.0
+                        aDim = (idx == 3 or idx == 4 or idx == 5) and dimFactor or 1.0
                     else
-                        aDim = (idx == 2 or idx == 4) and dimFactor or 1.0
+                        aDim = (idx == 2 or idx == 4 or idx == 5) and dimFactor or 1.0
                     end
                 end
                 fd.bars[idx]:SetVertexColor(cData[1], cData[2], cData[3], cData[4] * opaMul * aDim)
@@ -883,12 +868,12 @@ function HP.UpdateSUFFrame(sufFrame)
     if useClassColors then
         -- Class color mode: amounts[] was already filled per-caster.
         -- Just clamp the total and distribute proportionally.
-        rawTotal = (amounts[1] or 0) + (amounts[2] or 0) + (amounts[3] or 0) + (amounts[4] or 0)
+        rawTotal = (amounts[1] or 0) + (amounts[2] or 0) + (amounts[3] or 0) + (amounts[4] or 0) + (amounts[5] or 0)
         local totalAll = mathmin(rawTotal, cap * overflowCap - hp)
         totalAll = mathmax(totalAll, 0)
 
         local remain = totalAll
-        for idx = 1, 4 do
+        for idx = 1, 5 do
             local a = amounts[idx] or 0
             a = mathmin(a, remain)
             amounts[idx] = a
@@ -896,7 +881,7 @@ function HP.UpdateSUFFrame(sufFrame)
         end
 
     elseif isSorted then
-        rawTotal = my1 + my2 + ot1 + ot2
+        rawTotal = my1 + my2 + ot1 + ot2 + ot3
         local totalAll = rawTotal
         totalAll = mathmin(totalAll, cap * overflowCap - hp)
         totalAll = mathmax(totalAll, 0)
@@ -905,7 +890,8 @@ function HP.UpdateSUFFrame(sufFrame)
         my1 = mathmin(my1, remain); remain = remain - my1
         my2 = mathmin(my2, remain); remain = remain - my2
         ot1 = mathmin(ot1, remain); remain = remain - ot1
-        ot2 = remain
+        ot2 = mathmin(ot2, remain); remain = remain - ot2
+        ot3 = remain
 
     else
         local total1, total2
@@ -937,9 +923,9 @@ function HP.UpdateSUFFrame(sufFrame)
     -- NOT iterate bars sequentially — it maps specific bars to specific
     -- amounts so colors stay correct.
     --
-    -- Sorted:     bars[1]=my1, bars[2]=my2, bars[3]=ot1, bars[4]=ot2
-    -- Non-sorted: bars[1]=my1, bars[3]=ot1, bars[2]=my2, bars[4]=ot2
-    -- Class:      bars[1..4] = amounts[1..4] (sequential per-caster)
+    -- Sorted:     bars[1]=my1, bars[2]=my2, bars[3]=ot1, bars[4]=ot2, bars[5]=ot3
+    -- Non-sorted: bars[1]=my1, bars[3]=ot1, bars[2]=my2, bars[4]=ot2 (bars[5] hidden)
+    -- Class:      bars[1..5] = amounts[1..5] (sequential per-caster)
     -- ----------------------------------------------------------------
     local renderOrder  -- { {bar, amount}, ... } in stacking order
     if useClassColors then
@@ -948,6 +934,7 @@ function HP.UpdateSUFFrame(sufFrame)
             { bars[2], amounts[2] or 0 },
             { bars[3], amounts[3] or 0 },
             { bars[4], amounts[4] or 0 },
+            { bars[5], amounts[5] or 0 },
         }
     elseif isSorted then
         renderOrder = {
@@ -955,6 +942,7 @@ function HP.UpdateSUFFrame(sufFrame)
             { bars[2], my2 },
             { bars[3], ot1 },
             { bars[4], ot2 },
+            { bars[5], ot3 },
         }
     else
         renderOrder = {
@@ -963,6 +951,7 @@ function HP.UpdateSUFFrame(sufFrame)
             { bars[2], my2 },
             { bars[4], ot2 },
         }
+        if bars[5] then bars[5]:Hide() end
     end
 
     -- curPx tracks the pixel endpoint of all prediction bars (used by
@@ -973,7 +962,7 @@ function HP.UpdateSUFFrame(sufFrame)
     if isVertical then
         local barH = hb:GetHeight()
         if barH <= 0 then
-            for idx = 1, 4 do if bars[idx] then bars[idx]:Hide() end end
+            for idx = 1, 5 do if bars[idx] then bars[idx]:Hide() end end
             return
         end
         barSize = barH
@@ -1748,7 +1737,7 @@ function HP.InitSUFCompat()
                             tex:SetColorTexture(1, 1, 1)
                         end
                     end
-                    for idx = 1, 4 do
+                    for idx = 1, 5 do
                         if fd.bars[idx] then apply(fd.bars[idx]) end
                     end
                     if fd.overhealBar then apply(fd.overhealBar) end
@@ -2110,7 +2099,7 @@ function HP.CleanupSUFFrames()
         if fd._isSUF then
             -- Bars
             if fd.bars then
-                for idx = 1, 4 do
+                for idx = 1, 5 do
                     if fd.bars[idx] then fd.bars[idx]:Hide() end
                 end
             end
@@ -2199,18 +2188,19 @@ function HP.DebugSUFFrames()
         if fd._isSUF then
             local u = frame.unit or fd.unit
             local exists = u and UnitExists(u)
-            local m1, m2, o1, o2 = 0, 0, 0, 0
+            local m1, m2, o1, o2, o3 = 0, 0, 0, 0, 0
             if exists then
                 if Settings.smartOrdering and HP.GetHealsSorted then
-                    m1, m2, o1, o2 = HP.GetHealsSorted(u)
+                    m1, m2, o1, o2, o3 = HP.GetHealsSorted(u)
                 elseif HP.GetHeals then
-                    m1, m2, o1, o2 = HP.GetHeals(u)
+                    m1, m2, o1, o2, o3 = HP.GetHeals(u)
                 end
             end
-            local total = m1 + m2 + o1 + o2
+            o3 = o3 or 0
+            local total = m1 + m2 + o1 + o2 + o3
             local color = total > 0 and "|cff00ff00" or "|cff888888"
-            print(string.format("  %s%s|r: exists=%s my=%.0f+%.0f other=%.0f+%.0f type=%s",
-                color, u or "nil", tostring(exists), m1, m2, o1, o2, fd._sufType or "?"))
+            print(string.format("  %s%s|r: exists=%s my=%.0f+%.0f other=%.0f+%.0f otherHoT=%.0f type=%s",
+                color, u or "nil", tostring(exists), m1, m2, o1, o2, o3, fd._sufType or "?"))
             printed = printed + 1
         end
     end

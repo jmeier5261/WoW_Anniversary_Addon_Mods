@@ -1,21 +1,26 @@
-# HealPredict - Shadowed Unit Frames Compatibility
+# HealPredict — Fork with SUF Compatibility, Foreign-Caster Tracking, and TBC Bomb Heals
 
 ## Overview
 
-This module provides full HealPredict integration with Shadowed Unit Frames (SUF). It renders heal prediction bars, overheal indicators, absorb overlays, and all indicator features directly on SUF health bars for all frame types.
+This fork began as a Shadowed Unit Frames (SUF) compatibility module and has since expanded to add new engine-level features and fix long-standing visual bugs in how heals from other players are tracked and rendered.
+
+**New in this fork:**
+- **Foreign HoT tracking** — display HoT prediction bars for HoTs cast by other players who are **not** running HealPredict (the upstream engine only tracked your own HoTs and HoTs from other HealPredict users).
+- **Dedicated "Other HoT" color slot** — a 5th prediction bar so foreign HoTs render with their own `OtherHoT` palette color instead of bleeding into the "my HoT" color.
+- **Prayer of Mending tracking (TBC)** — the engine now recognizes PoM as a BOMB heal, tracks the buff holder through jumps, and renders a prediction bar for the incoming proc heal.
+- **SUF compatibility module** — full integration of heal prediction, indicators, overlays, and text features with Shadowed Unit Frames.
 
 ## Installation
 
-**Note:** Always back up your existing files before replacing them.
+**Important:** This fork is a drop-in replacement for the original HealPredict addon. If you have the original HealPredict installed, you **must uninstall it first** — running both will cause conflicts (duplicate frame registration, stale engine state, and double event handling).
 
-1. Close World of Warcraft completely
-2. Navigate to your HealPredict addon folder:
+1. Close World of Warcraft completely.
+2. **Uninstall the original HealPredict** if it's installed:
+   - Delete `World of Warcraft/_anniversary_/Interface/AddOns/HealPredict/` (or whatever folder the upstream addon lives in).
+   - Optional: preserve your saved variables by backing up `WTF/Account/<account>/SavedVariables/HealPredict.lua` first.
+3. Copy the entire **`HealPredict`** folder from this repo into your AddOns directory so it lands at:
    `World of Warcraft/_anniversary_/Interface/AddOns/HealPredict/`
-3. Replace the following files with the ones provided:
-   - `Main/Modules/SUFCompat.lua` — the SUF compatibility module
-   - `Main/Modules/Modules.xml` — module load list (includes SUFCompat.lua)
-   - `Main/Config/Init.lua` — addon initialization (includes SUF detection and startup)
-4. Launch World of Warcraft and log in — HealPredict will auto-detect SUF and initialize
+4. Launch World of Warcraft and log in — the fork will auto-detect SUF and initialize.
 
 ## Important: Disable SUF's Built-in Incoming Heals
 
@@ -35,10 +40,71 @@ SUF has its own incoming heals module that will conflict with HealPredict. You m
 - Arena (1-5), Arena Pets (1-5)
 - Boss (1-4)
 
-## Features
+## Engine-Level Features (new in this fork)
+
+These changes apply to **all** frame renderers — SUF, ElvUI, Blizzard, and nameplates — not just SUF.
+
+### Foreign HoT Tracking
+
+Upstream HealPredict only saw HoTs it could compute itself: your own casts (via the combat log) and HoTs from other players running HealPredict (via addon comm). HoTs from any other source were invisible — meaning on the vast majority of PuG and non-healer-stacked groups, you'd see no HoT prediction bars at all for heals landing on you.
+
+This fork adds a third code path that detects foreign HoT applications from the combat log and estimates the incoming amount using **your own `GetSpellBonusHealing()` as a proxy for the caster's spell power**. Tracked spells:
+
+- **Druid:** Rejuvenation, Regrowth, Lifebloom (HoT + bloom BOMB)
+- **Priest:** Renew, Greater Heal's HoT component
+
+The estimate is approximate at cast time (~within 20% for typical raid-geared healers). Once the first tick lands, the existing empirical-correction path in `CastTracking.lua` replaces the estimate with the actual combat-log tick amount, so the bar converges to the correct value within ~3 seconds.
+
+**Conflict protection:** if a wire message from another HealPredict user arrives first, the foreign estimate defers to it — the addon-comm data is authoritative when available. Records created by the foreign fallback are tagged with `foreignEstimate = true` so wire data isn't clobbered.
+
+### Five-Bar Prediction System + Dedicated "Other HoT" Color
+
+Upstream's 4-bar sorted layout collapsed **all** HoTs — mine and others' — into a single `hotAmount` bucket, which the palette colored as `MyHoT`. This meant another priest's Renew on you would paint with **your** HoT color, which was visually misleading.
+
+This fork:
+
+1. **Splits `GetHealAmountSorted`** into `(otherBefore, selfAmount, otherAfter, myHot, otherHot)` — 5 return values. Self HoTs go to slot 4, foreign HoTs go to slot 5.
+2. **Adds a 5th prediction bar** across all renderers (core Render.lua, SUFCompat.lua, ElvUICompat.lua) with its own palette slot.
+3. **Uses the existing `raidOtherHoT` / `unitOtherHoT` color keys** (and their `OH` overheal variants) from `Core.lua` — no new config options needed. The overheal-state color for foreign HoTs is a dedicated entry in the color picker, separate from `MyHoTOH`.
+4. **Extends class-color mode** (smart ordering + class colors) to support up to 5 distinct caster class colors (was 4).
+
+Non-sorted mode is unaffected — it already routed foreign heals correctly through `GetHealAmountEx`'s self-vs-other split, so slot 5 is always 0 there.
+
+### Generic `UnitGetIncomingHeals` Supplement
+
+Previously, the SUF compatibility module supplemented engine data with Blizzard's `UnitGetIncomingHeals` API so direct heals from players **not** running HealPredict still rendered — but this logic lived only in SUFCompat. Blizzard default frames, nameplates, and ElvUI frames had no fallback, so on those renderers an external priest's Greater Heal on you would produce no bar at all.
+
+This fork lifts the supplement into `HP.GetHeals` / `HP.GetHealsSorted` in [Render.lua](HealPredict/Main/Core/Render.lua) via a shared `ApplyAPISupplement` helper. Because every renderer goes through these two entry points, the fallback is now uniform across SUF, ElvUI, Blizzard, and nameplates.
+
+**How it works:**
+- `UnitGetIncomingHeals(unit)` returns the total direct-heal prediction for the target (TBC API doesn't include HoTs).
+- `UnitGetIncomingHeals(unit, "player")` returns your own contribution.
+- The delta `apiOther = apiTotal - apiSelf` is the direct-heal prediction from all other casters.
+- If `apiOther` exceeds what the engine already knows (`engineOther` summed across all other-player slots), the excess is added to the "other direct" bucket (slot 3 sorted / slot 3 non-sorted) so it renders with the `OtherDirect` palette color.
+- Sort-aware: in smart-ordering mode, slot 1 (`otherBefore`) is also an "other" slot, so it's included in the `engineOther` sum to prevent double-counting engine-tracked heals.
+
+The class-colored rendering path was similarly made generic: `ApplyRealModeClassColors` in Render.lua now scans group members and assigns any API-only healer's contribution to the next free bar with their class color — behavior that previously existed only inside SUFCompat.
+
+### Prayer of Mending Tracking (TBC)
+
+Prayer of Mending was never modeled by the engine — it wasn't in `SpellData.lua` at all, so priests' PoM never produced an incoming-heal bar. This fork adds it as a `BOMB`-type heal.
+
+- **Data** (`Engine.pomData` in SpellData.lua): TBC rank 1, spellID 33076, base 672, coefficient 0.4286, duration 30s.
+- **Estimator** (`Engine.EstimatePoM(casterGUID, spellID)`): returns `base + sp * coeff` using the local player's `GetSpellBonusHealing()` as SP proxy. Works for both self-cast and foreign priests.
+- **Tracking**: `SPELL_AURA_APPLIED` / `SPELL_AURA_REFRESH` creates or updates a BOMB record in `inbound[casterGUID]["Prayer of Mending_bomb"]` with the aura holder as the target; `SPELL_AURA_REMOVED` drops the target. When PoM jumps (REMOVED on old holder → APPLIED on new holder), the prediction bar follows.
+- **No `AFFILIATION_MINE` gate** — foreign priests' PoM is tracked the same way as your own.
+
+Because PoM BOMB records flow through `inbound` alongside Lifebloom blooms, they render through the existing bar pipeline with no renderer changes needed.
+
+### Bug Fixes
+
+- **Foreign HoTs no longer steal `MyHoT` color** — root cause was `GetHealAmountSorted` aggregating all HoTs into a single bucket regardless of caster. Fixed by the 5-bar split above.
+- **Debug output updated** — `/hpcompat suf` now prints the foreign-HoT amount per tracked frame (`otherHoT=N`).
+
+## SUF Features
 
 ### Heal Prediction Bars
-- Four stacked prediction bars (my direct, my HoT, other direct, other HoT)
+- Five stacked prediction bars (my direct, my HoT, other direct, other HoT, foreign HoT)
 - Bars extend past the health bar edge based on the configured overflow percentage
 - Overflow caps are per-frame-type: unit frames, party, and raid each have separate settings
 - Bar-to-amount mapping matches the core renderer exactly (sorted and non-sorted modes)
@@ -164,9 +230,21 @@ The module hooks the following core functions without modifying their source fil
 ```
 /hpcompat suf
 ```
-Prints tracked SUF frames, settings state, and live heal amounts (my + other) for all frames.
+Prints tracked SUF frames, settings state, and live heal amounts for all frames. Output now includes the foreign-HoT amount (`otherHoT=N`) as a distinct column so you can verify that other players' HoTs are being tracked.
 
-### Files Modified
-- `HealPredict/Main/Modules/SUFCompat.lua` — the compatibility module (full rewrite)
+### Files Modified in This Fork
+
+**Engine (cross-renderer features):**
+- `HealPredict/libs/HealEngine/HealEngine.lua` — `GetHealAmountSorted` splits HoTs by caster and returns a 5th value (`otherHotAmount`)
+- `HealPredict/libs/HealEngine/SpellData.lua` — adds `Engine.foreignHoTs` / `EstimateForeignHoT` (cross-class foreign HoT registry), `Engine.pomData` / `EstimatePoM` (Prayer of Mending)
+- `HealPredict/libs/HealEngine/CastTracking.lua` — foreign HoT apply/refresh branch, foreign HoT removal branch, Prayer of Mending aura tracking branch
+
+**Renderers (5-bar system):**
+- `HealPredict/Main/Core/Render.lua` — palettes extended to 5 slots, `GetHeals` / `GetHealsSorted` return 5 values, `RenderPrediction` handles a 5th bar, class-color helpers support 5 casters, SPECS arrays gained an `OtherHealBar3` entry
+- `HealPredict/Main/Modules/SUFCompat.lua` — SUF compatibility module with 5-bar parity (full rewrite)
+- `HealPredict/Main/Modules/ElvUICompat.lua` — ElvUI 5-bar parity
+- `HealPredict/Main/Modules/Features.lua` — test frame bar creation extended to 5
+
+**Initialization:**
 - `HealPredict/Main/Config/Init.lua` — calls `InitSUFCompat()` 3 seconds after `PLAYER_ENTERING_WORLD`
 - `HealPredict/Main/Modules/Modules.xml` — loads `SUFCompat.lua`

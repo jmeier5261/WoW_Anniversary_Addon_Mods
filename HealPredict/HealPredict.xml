@@ -1,0 +1,61 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+
+    <Button name="HP_SwatchTemplate" virtual="true">
+        <Size x="16" y="16" />
+        <Layers>
+            <Layer level="BACKGROUND">
+                <Texture name="$parentBG">
+                    <Size x="14" y="14" />
+                    <Anchors>
+                        <Anchor point="CENTER" />
+                    </Anchors>
+                    <Color r="1.0" g="1.0" b="1.0" />
+                </Texture>
+            </Layer>
+        </Layers>
+        <Scripts>
+            <OnEnter>
+                getglobal(self:GetName() .. "BG"):SetVertexColor(1.0, 0.82, 0.0)
+            </OnEnter>
+            <OnLeave>
+                getglobal(self:GetName() .. "BG"):SetVertexColor(1.0, 1.0, 1.0)
+            </OnLeave>
+        </Scripts>
+        <NormalTexture name="$parentSwatch" file="Interface\ChatFrame\ChatFrameColorSwatch" />
+    </Button>
+
+    <Slider name="HP_SliderTemplate" inherits="HorizontalSliderTemplate" virtual="true">
+        <Size x="144" y="17" />
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="$parentText" inherits="OptionsFontHighlight">
+                    <Anchors>
+                        <Anchor point="BOTTOM" relativePoint="TOP" />
+                    </Anchors>
+                </FontString>
+                <FontString name="$parentLow" inherits="OptionsFontSmall" text="LOW">
+                    <Anchors>
+                        <Anchor point="TOPLEFT" relativePoint="BOTTOMLEFT">
+                            <Offset x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+                <FontString name="$parentHigh" inherits="OptionsFontSmall" text="HIGH">
+                    <Anchors>
+                        <Anchor point="TOPRIGHT" relativePoint="BOTTOMRIGHT">
+                            <Offset x="4" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+    </Slider>
+
+    <Frame name="HP_CoreFrame" inherits="BackdropTemplate">
+        <Scripts>
+            <OnLoad function="HP_CoreFrame_OnLoad" />
+            <OnEvent function="HP_CoreFrame_OnEvent" />
+        </Scripts>
+    </Frame>
+</Ui>

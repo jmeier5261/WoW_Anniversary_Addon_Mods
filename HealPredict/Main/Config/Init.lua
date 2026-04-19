@@ -2,6 +2,7 @@
 -- OnLoad, OnEvent, slash commands, migrations, profile management
 -- Author: DarkpoisOn
 -- License: All Rights Reserved (c) 2026 DarkpoisOn
+-- Modifications by PineappleTuesday
 
 local HP = HealPredict
 
